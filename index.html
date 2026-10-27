@@ -98,10 +98,15 @@ label{display:flex;flex-direction:column;font-size:.85rem;color:var(--mute);gap:
   <label>Задаток, ₽
     <input id="deposit" type="number" min="0" step="any">
   </label>
+  <!-- Поле шага аукциона: только для списка «c» -->
+  <label class="wide" id="step-wrap" hidden>Минимальный шаг аукциона, ₽
+    <input id="auc-step" type="number" min="0" step="any">
+  </label>
   <label class="wide">Окончание приёма заявок
     <input id="deadline" type="datetime-local">
   </label>
-  <div class="wide">
+  <!-- Блок графика: скрывается для аукционов -->
+  <div class="wide" id="sched-wrap">
     <label>График снижения цены (по необходимости)</label>
     <div id="rows"></div>
     <button type="button" id="addrow">+ Шаг графика</button>
@@ -134,6 +139,7 @@ const CATS = [
   {id:'c', name:'Аукционы: ждём публичного предложения', hint:'Когда аукцион не состоялся и стало публичное предложение, перенесите лот в список «Публичные предложения».'},
   {id:'d', name:'Арестованное имущество', hint:'Торги арестованным имуществом.'}
 ];
+const AUCTION_CAT = 'c'; // список, где график не нужен, а нужен шаг аукциона
 const KEY = 'lots-v2';
 let lots = load(), editId = null;
 const PEOPLE = [{id:'n', name:'Надя'}, {id:'i', name:'Ира'}, {id:'l', name:'Лина'}];
@@ -203,7 +209,11 @@ function card(l){
 
   const facts = el('div', 'facts');
   facts.append(fact('Начальная цена', money(l.price)));
-  if (p.s.length) facts.append(fact('Цена сейчас по графику', p.cur ? money(p.cur.price) : money(l.price)));
+  if (l.cat === AUCTION_CAT){
+    facts.append(fact('Минимальный шаг аукциона', money(l.aucStep)));
+  } else if (p.s.length){
+    facts.append(fact('Цена сейчас по графику', p.cur ? money(p.cur.price) : money(l.price)));
+  }
   facts.append(fact('Задаток', money(l.deposit)));
   if (l.deadline){
     const dl = el('div'); dl.append(el('span', null, 'Приём заявок до'));
@@ -212,7 +222,7 @@ function card(l){
   }
   c.append(facts);
 
-  if (p.s.length){
+  if (l.cat !== AUCTION_CAT && p.s.length){
     if (p.next) c.append(el('div', 'site', 'Следующее снижение: ' + fmt(p.next.date) + ', до ' + money(p.next.price)));
     const det = el('details', 'sched');
     det.append(el('summary', null, 'График снижения (шагов: ' + p.s.length + ')'));
@@ -271,18 +281,27 @@ function addRow(date, price){
   r.append(a, b, x); $('rows').append(r);
 }
 
+// Показ/скрытие полей графика и шага аукциона в зависимости от выбранного списка
+function syncCatFields(){
+  const isAuc = $('cat').value === AUCTION_CAT;
+  $('sched-wrap').hidden = isAuc;
+  $('step-wrap').hidden = !isAuc;
+}
+
 function openDlg(cat, lot){
   editId = lot ? lot.id : null;
   $('ft').textContent = lot ? 'Изменить лот' : 'Новый лот';
   $('cat').value = cat;
   $('own').value = lot ? lot.owner : active;
   for (const k of ['title', 'url', 'price', 'deposit', 'deadline', 'notes']) $(k).value = lot && lot[k] != null ? lot[k] : '';
+  $('auc-step').value = lot && lot.aucStep != null ? lot.aucStep : '';
   const st = lot && lot.site ? lot.site : '';
   if (!st || SITES.includes(st)){ $('site').value = st; $('site2').value = ''; }
   else { $('site').value = '__other'; $('site2').value = st; }
   $('site2').hidden = $('site').value !== '__other';
   $('rows').textContent = '';
   ((lot && lot.schedule) || []).forEach(s => addRow(s.date, s.price));
+  syncCatFields();
   $('dlg').showModal();
 }
 
@@ -293,6 +312,7 @@ $('site').add(new Option('Не выбрана', ''));
 SITES.forEach(x => $('site').add(new Option(x, x)));
 $('site').add(new Option('Другая площадка…', '__other'));
 $('site').onchange = () => { $('site2').hidden = $('site').value !== '__other'; if (!$('site2').hidden) $('site2').focus(); };
+$('cat').onchange = syncCatFields; // переключение полей при смене списка
 $('addrow').onclick = () => addRow();
 $('cancel').onclick = () => $('dlg').close();
 $('gen').onclick = () => {
@@ -308,11 +328,14 @@ $('gen').onclick = () => {
 
 $('f').onsubmit = e => {
   e.preventDefault();
-  const schedule = [...document.querySelectorAll('#rows .row')]
+  const isAuc = $('cat').value === AUCTION_CAT;
+  // Для аукциона график не собираем, для остальных — не сохраняем шаг аукциона
+  const schedule = isAuc ? [] : [...document.querySelectorAll('#rows .row')]
     .map(r => ({date: r.children[0].value, price: r.children[1].value}))
     .filter(s => s.date && s.price !== '');
   const data = {owner: $('own').value, cat: $('cat').value, title: $('title').value.trim(), site: $('site').value === '__other' ? $('site2').value.trim() : $('site').value, url: $('url').value.trim(),
-    price: $('price').value, deposit: $('deposit').value, deadline: $('deadline').value, schedule, notes: $('notes').value.trim()};
+    price: $('price').value, deposit: $('deposit').value, deadline: $('deadline').value, schedule, notes: $('notes').value.trim(),
+    aucStep: isAuc ? $('auc-step').value : ''};
   if (editId){ lots = lots.map(l => l.id === editId ? Object.assign(l, data) : l); }
   else lots.push(Object.assign({id: Date.now() + Math.random().toString(36).slice(2, 6)}, data));
   save(); $('dlg').close(); render();
