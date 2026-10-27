@@ -86,7 +86,8 @@ label{display:flex;flex-direction:column;font-size:.85rem;color:var(--mute);gap:
     <input id="title" required placeholder="Например: нежилое помещение, ул. Садовая, 5">
   </label>
   <label>Сайт (площадка)
-    <input id="site" placeholder="torgi.gov.ru, lot-online.ru…">
+    <select id="site"></select>
+    <input id="site2" placeholder="Название площадки" hidden style="margin-top:6px">
   </label>
   <label>Ссылка на лот
     <input id="url" type="url" placeholder="https://…">
@@ -275,7 +276,11 @@ function openDlg(cat, lot){
   $('ft').textContent = lot ? 'Изменить лот' : 'Новый лот';
   $('cat').value = cat;
   $('own').value = lot ? lot.owner : active;
-  for (const k of ['title', 'site', 'url', 'price', 'deposit', 'deadline', 'notes']) $(k).value = lot && lot[k] != null ? lot[k] : '';
+  for (const k of ['title', 'url', 'price', 'deposit', 'deadline', 'notes']) $(k).value = lot && lot[k] != null ? lot[k] : '';
+  const st = lot && lot.site ? lot.site : '';
+  if (!st || SITES.includes(st)){ $('site').value = st; $('site2').value = ''; }
+  else { $('site').value = '__other'; $('site2').value = st; }
+  $('site2').hidden = $('site').value !== '__other';
   $('rows').textContent = '';
   ((lot && lot.schedule) || []).forEach(s => addRow(s.date, s.price));
   $('dlg').showModal();
@@ -283,6 +288,11 @@ function openDlg(cat, lot){
 
 CATS.forEach(c => $('cat').add(new Option(c.name, c.id)));
 PEOPLE.forEach(p => $('own').add(new Option(p.name, p.id)));
+const SITES = ['Torgi.gov', 'Tbankrot', 'Фабрикант', 'Сбербанк АСТ', 'Альфалот', 'Федресурс', 'Lot-online (РАД)', 'МЭТС', 'ЭТП ГПБ'];
+$('site').add(new Option('Не выбрана', ''));
+SITES.forEach(x => $('site').add(new Option(x, x)));
+$('site').add(new Option('Другая площадка…', '__other'));
+$('site').onchange = () => { $('site2').hidden = $('site').value !== '__other'; if (!$('site2').hidden) $('site2').focus(); };
 $('addrow').onclick = () => addRow();
 $('cancel').onclick = () => $('dlg').close();
 $('gen').onclick = () => {
@@ -301,7 +311,7 @@ $('f').onsubmit = e => {
   const schedule = [...document.querySelectorAll('#rows .row')]
     .map(r => ({date: r.children[0].value, price: r.children[1].value}))
     .filter(s => s.date && s.price !== '');
-  const data = {owner: $('own').value, cat: $('cat').value, title: $('title').value.trim(), site: $('site').value.trim(), url: $('url').value.trim(),
+  const data = {owner: $('own').value, cat: $('cat').value, title: $('title').value.trim(), site: $('site').value === '__other' ? $('site2').value.trim() : $('site').value, url: $('url').value.trim(),
     price: $('price').value, deposit: $('deposit').value, deadline: $('deadline').value, schedule, notes: $('notes').value.trim()};
   if (editId){ lots = lots.map(l => l.id === editId ? Object.assign(l, data) : l); }
   else lots.push(Object.assign({id: Date.now() + Math.random().toString(36).slice(2, 6)}, data));
